@@ -3,11 +3,11 @@
 
 template <typename T>
 class Node {
-    private:
+    public:
         Node<T>* next;
         T val;
-    public:
-        Node<T>(T val) {this->val = val;};
+
+        Node<T>(T val) {this->val = val; this->next = nullptr;};
         Node<T>* getNext() {return next;};
         void setNext(Node<T>* newNext) {this->next = newNext;};
         T getVal() {return val;};
