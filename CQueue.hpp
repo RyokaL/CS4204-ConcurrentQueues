@@ -28,8 +28,8 @@ class CQueue_L : public CQueue<T> {
 
             //Critical section
             qLock.lock();
-            if(this->head) {
-                this->tail->setNext(newNode);
+            if(this->tail) {
+                this->tail->next = newNode;
                 this->tail = newNode;
             }
             else {
@@ -54,68 +54,70 @@ class CQueue_L : public CQueue<T> {
             }
             else {
                 oldHead = this->head;
-                returnVal = this->head->getVal();
-                this->head = this->head->getNext();
-                delete oldHead;
-                if(this->head == this->tail) {
+                returnVal = this->head->val;
+                this->head = this->head->next;
+                if(oldHead == this->tail) {
                     this->tail = nullptr;
                 }
+                delete oldHead;
             }
             //cout << "Removed " << returnVal << " from queue\n";
             qLock.unlock();
             //End of critical section
 
             return returnVal; 
-        };
+        }
 };
 
 template <typename T>
 class CQueue_LF : CQueue<T> {
-    public:    
+    public:
+        Node<T>* orgHead;
+
+        CQueue_LF() {
+            this->head = new Node<T>();
+            this->head->next = this->tail;
+            this->tail = this->head;
+            orgHead = this->head;
+        }
+
+        ~CQueue_LF() {
+            delete this->head;
+        }
+
         void enqueue(T payload) override {
             Node<T>* newNode = new Node<T>(payload);
             Node<T>* oldTail;
             while(true) {
-                //If our old tail was null, then update both tail and head.
-                if(__sync_bool_compare_and_swap(&(this->tail), static_cast<Node<T>*>(nullptr), newNode)) {
-                    this->head = newNode;
+                oldTail = this->tail;
+                Node<T>* nextNull = nullptr;
+                if(__atomic_compare_exchange_n(&(oldTail->next), &(nextNull), newNode, true, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
+                    oldTail->next = newNode;
                     break;
                 }
-                //Get a pointer to the (now) current tail
-                oldTail = this->tail;
-                //Check the value we got is still valid, if not retry. If it is, set tail->next to our new node
-                if(__sync_bool_compare_and_swap(&(this->tail->next), (oldTail->next), newNode)) {
-                    //If this fails, it is okay as it is likely another thread already updated the tail. Since the above updates the next pointer, this keeps the head
-                    //This shouldn't cause desync as the dequeue can set the tail to null which will break this check as well
-                    __sync_bool_compare_and_swap(&(this->tail), oldTail, newNode);
-                    break;
+                else {
+                    __atomic_compare_exchange_n(&(this->tail), &(oldTail), true, oldTail->next, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
                 }
             }
+            __atomic_compare_exchange_n(&(this->tail), &(oldTail), newNode, true, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
             //cout << "Added " << payload << " to queue\n";
-        };
+        }
 
         T dequeue() override {
             Node<T>* oldHead;
-            if(!this->head) {
-                throw 1;
-            }
-            else {
-                while(true) {
-                    //Get a pointer to the (now) current head
-                    oldHead = this->head;
-                    //Check the value we just got is still valid, if so set the head to the next pointer
-                    if(__sync_bool_compare_and_swap(&(this->head), oldHead, oldHead->next)) {
-                        break;
-                    }
+            while(true) {
+                oldHead = this->head;
+                if(oldHead->next == nullptr) {
+                    throw 1;
                 }
-                //If the tail is the same as the old head then set to null as the head will also be null
-                __sync_bool_compare_and_swap(&(this->tail), oldHead, static_cast<Node<T>*>(nullptr));
-                //Return the value
+
+                if(__atomic_compare_exchange_n(&(this->head), &(oldHead), oldHead->next, true, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
+                    break;
+                }
             }
-            T val = oldHead->val;
+            T val = oldHead->next->val;
             delete oldHead;
-            //cout << "Removed " << val << " from queue\n";
             return val;
-        };
+        }
 };
 #endif

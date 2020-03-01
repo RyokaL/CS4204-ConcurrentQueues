@@ -7,6 +7,7 @@ class Node {
         Node<T>* next;
         T val;
 
+        Node<T>() {this->next = nullptr;};
         Node<T>(T val) {this->val = val; this->next = nullptr;};
         Node<T>* getNext() {return next;};
         void setNext(Node<T>* newNext) {this->next = newNext;};

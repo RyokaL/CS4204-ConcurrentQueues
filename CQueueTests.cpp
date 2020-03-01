@@ -15,54 +15,6 @@ void randomThreadSleep() {
     std::this_thread::sleep_for(std::chrono::milliseconds(randSleep));
 }
 
-void addToQueueL(int value) {
-    lockQueue.enqueue(value);
-    return;
-}
-
-void addToQueueLF(int value) {
-    lockFreeQueue.enqueue(value);
-    return;
-}
-
-void dequeueLF(int id) {
-    randomThreadSleep();
-    int val = 0;
-    int count = 0;
-    bool removed = false;
-    while(!removed) {
-        try {
-            val = lockFreeQueue.dequeue();
-            cout << "Tried: " << count << " times before removing " << val << "\n";
-            removed = true;
-        }
-        catch (int e) {
-            count += 1;
-            //Nothing in queue, try again
-        }
-    }
-    return;
-}
-
-void dequeueL(int id) {
-    randomThreadSleep();
-    int val = 0;
-    int count = 0;
-    bool removed = false;
-    while(!removed) {
-        try {
-            val = lockQueue.dequeue();
-            cout << "Tried: " << count << " times before removing " << val << "\n";
-            removed = true;
-        }
-        catch (int e) {
-            count += 1;
-            //Nothing in queue, try again
-        }
-    }
-    return;
-}
-
 void producerThread(bool lock, int min, int max) {
     for(int i = min; i <= max; i++) {
         //randomThreadSleep();
@@ -79,7 +31,8 @@ void consoomerThread(bool lock, int loops) {
     int count = 0;
     int val = 0;
     bool removed = false;
-    for(int i = 0; i <= loops; i++) {
+    int itemsRemoved = 0;
+    for(int i = 0; i < loops; i++) {
         removed = false;
         val = 0;
         count = 0;
@@ -93,6 +46,7 @@ void consoomerThread(bool lock, int loops) {
                     val = lockFreeQueue.dequeue();
                 }
                 //cout << "Tried: " << count << " times before removing " << val << "\n";
+                itemsRemoved += 1;
                 removed = true;
             }
             catch (int e) {
@@ -101,27 +55,33 @@ void consoomerThread(bool lock, int loops) {
             }
         }
     }
+    cout << "Removed: " << itemsRemoved << " items\n";
 }
 
 int main(int argc, char* argv[]) {
     srand(time(0));
     bool lock = true;
     int producerThreads = 100;
+    int producerWork = 1;
 
     if(argc > 1) {
         producerThreads = stoi(argv[1]);
     }
     if(argc > 2) {
-        lock = stoi(argv[2]);
+        producerWork = stoi(argv[2]);
     }
+    if(argc > 3) {
+        lock = stoi(argv[3]);
+    }
+
     thread queueAdd[100];
 
     auto start = std::chrono::high_resolution_clock::now();
     
-    thread consoomer(consoomerThread, lock, (producerThreads) - 1);
+    thread consoomer(consoomerThread, lock, (producerThreads * producerWork));
 
     for(int i = 0; i < producerThreads; i++) {
-        queueAdd[i] = thread(producerThread, lock, 0, 0);
+        queueAdd[i] = thread(producerThread, lock, 1, producerWork);
     }
 
     for(int i = 0; i < producerThreads; i++) {
