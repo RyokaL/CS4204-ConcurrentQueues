@@ -75,6 +75,7 @@ class CQueue_LF : CQueue<T> {
         Node<T>* orgHead;
 
         CQueue_LF() {
+            //Use a dummy head to simplify dequeue
             this->head = new Node<T>();
             this->head->next = this->tail;
             this->tail = this->head;
@@ -82,6 +83,7 @@ class CQueue_LF : CQueue<T> {
         }
 
         ~CQueue_LF() {
+            //On destruction delete the (now) dummy head
             delete this->head;
         }
 
@@ -91,14 +93,16 @@ class CQueue_LF : CQueue<T> {
             while(true) {
                 oldTail = this->tail;
                 Node<T>* nextNull = nullptr;
+                //If tail->next is null then we can add a new node to tail->next. If not then some other thread added a new node already but didn't update tail
                 if(__atomic_compare_exchange_n(&(oldTail->next), &(nextNull), newNode, true, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
-                    oldTail->next = newNode;
                     break;
                 }
                 else {
-                    __atomic_compare_exchange_n(&(this->tail), &(oldTail), true, oldTail->next, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
+                    //Try to update the tail if it is still the value we got before. This means all threads will try to update the thread ASAP if the original thread doesn't manage to
+                    __atomic_compare_exchange_n(&(this->tail), &(oldTail), oldTail->next, true, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
                 }
             }
+            //If we successfully enqueued then update the tail to our new node. The above tries to do this in case this thread doesn't run, therefore we don't need a loop
             __atomic_compare_exchange_n(&(this->tail), &(oldTail), newNode, true, __ATOMIC_RELAXED, __ATOMIC_RELAXED);
             //cout << "Added " << payload << " to queue\n";
         }
@@ -107,15 +111,18 @@ class CQueue_LF : CQueue<T> {
             Node<T>* oldHead;
             while(true) {
                 oldHead = this->head;
+                //If the dummy head has no next, queue is empty
                 if(oldHead->next == nullptr) {
                     throw 1;
                 }
-
+                //Try to replace the dummy head with the next node (we are sort of logically deleting the node)
                 if(__atomic_compare_exchange_n(&(this->head), &(oldHead), oldHead->next, true, __ATOMIC_RELAXED, __ATOMIC_RELAXED)) {
                     break;
                 }
             }
+            //Get the value to return
             T val = oldHead->next->val;
+            //May cause ABA issues? Could be solved by reference counting with a specific instruction set?
             delete oldHead;
             return val;
         }
